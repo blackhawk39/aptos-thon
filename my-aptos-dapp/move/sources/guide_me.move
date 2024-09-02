@@ -4,7 +4,12 @@ module guide_me_addr::guide_me{
     use aptos_std::smart_table::{Self,SmartTable};
     use aptos_std::smart_vector::{Self,SmartVector};
     use std::signer;
+
     const OBJECT_NAME: vector<u8> = b"AskAroundObject";
+    
+    const E_UNEXPECTED_VALUE:u64 = 1;
+    const E_KEY_NOT_FOUND:u64 = 2;
+    
     struct Question has store{
         id: u64,
         asker: address,
@@ -12,7 +17,7 @@ module guide_me_addr::guide_me{
         tag: String,
         answered: bool,
         best_answer_id: u64,
-        timestamp: u64
+        timestamp: u64 //pending
     }
     struct Answer has store {
         answerer: address,
@@ -40,7 +45,7 @@ module guide_me_addr::guide_me{
         answers: SmartVector<SmartVector<Answer>>,
         tags: SmartTable<String, Tag>,
         user_tags: SmartTable<address, SmartTable<String, UserTag>>,
-        // stakes: SmartTable<address,u64>,
+        // stakes: SmartTable<address,u64>, //Pending
         tag_to_questions: SmartTable<String, SmartVector<u64>>,
         tag_keys: SmartVector<String>,
         users:  SmartTable<address, User>
@@ -69,20 +74,85 @@ module guide_me_addr::guide_me{
     ) acquires AskAroundObject {
         let user_addr = signer::address_of(user);
 
-        // // Check that the name is not empty
-        // assert!(string::length(&name) > 0, 1);
+        // Check that the name is not empty
+        assert!(string::length(&name) > 0, E_UNEXPECTED_VALUE);
 
-        // // Check that the name length is within acceptable limits (1 to 100 characters)
-        // assert!(string::length(&name) <= 100, 2);
+        // Check that the name length is within acceptable limits (1 to 100 characters)
+        assert!(string::length(&name) <= 100, E_UNEXPECTED_VALUE);
         let a_a_object = borrow_global_mut<AskAroundObject>(state_object_address());
         let table = &a_a_object.users;
-        assert!(!smart_table::contains(table, user_addr),2);
+        assert!(!smart_table::contains(table, user_addr),E_KEY_NOT_FOUND);
         // Register the user with the new name
         let user_info = User {
             name: name,
             questions: smart_vector::new<u64>()
         };
         smart_table::add(&mut a_a_object.users, user_addr, user_info);
+        smart_table::add(&mut a_a_object.user_tags, user_addr, smart_table::new());
+        std::debug::print(&string::utf8(b"User Registered"));
+        std::debug::print(&name);
+    }
+    public fun add_tag(
+        user: &signer,
+        tag: String
+    ) acquires AskAroundObject {
+        let user_addr = signer::address_of(user);
+        // let user_tags = SmartTable<String, UserTag>;
+        assert!(string::length(&tag) > 0 && string::length(&tag) <= 10, E_UNEXPECTED_VALUE);
+        
+        let a_a_object = borrow_global_mut<AskAroundObject>(state_object_address());
+        let tags = &a_a_object.tag_keys;
+        if (!smart_vector::contains(tags, &tag)){
+            smart_vector::push_back(&mut a_a_object.tag_keys,tag);
+            let tag_ob = Tag {
+                user_count: 0
+            };
+            smart_table::add(&mut a_a_object.tags,tag,tag_ob);
+        };
+        let user_tags = smart_table::borrow_mut(&mut a_a_object.user_tags, user_addr);
+        if (smart_table::contains(user_tags,tag) ){
+            let user_tag = smart_table::borrow(user_tags, tag);
+            assert!(!user_tag.exists, E_UNEXPECTED_VALUE)
+        };
+        // Register the userTag
+        let user_tag = UserTag {
+            exists: true,
+            timestamp: 0,
+            last_claimed: 0,
+            best_answer_count: 0
+        };
+        smart_table::add(user_tags , tag, user_tag);
+        let tag_count = smart_table::borrow_mut(&mut a_a_object.tags,tag);
+        tag_count.user_count = tag_count.user_count + 1;
+        std::debug::print(&string::utf8(b"Added Tag"));
+        std::debug::print(&tag);
+        std::debug::print(&string::utf8(b"User Count"));
+        std::debug::print(&smart_table::borrow(&a_a_object.tags,tag).user_count);
+    }
+// Ask A Qusetion
+    public fun ask_question(
+        user: &signer,
+        content: String,
+        tag: String
+    ) acquires AskAroundObject{
+        let user_addr = signer::address_of(user);
+        let a_a_object = borrow_global_mut<AskAroundObject>(state_object_address());
+        assert!(string::length(&content) > 0, 5);
+        assert!(TagExists(&a_a_object.user_tags,user_addr,tag), E_UNEXPECTED_VALUE);
+        // Create a new question
+        let q_num = smart_vector::length(&a_a_object.questions);
+        let question = Question {
+            id: q_num,
+            asker: user_addr,
+            content: content,
+            tag: tag,
+            answered: false,
+            best_answer_id: 0,
+            timestamp: 0
+        };
+        smart_vector::push_back(&mut a_a_object.questions, question);
+        let user_info = smart_table::borrow_mut(&mut a_a_object.users, user_addr);
+        smart_vector::push_back(&mut user_info.questions, q_num)
     }
 
 // ======================== Helper functions ========================
@@ -95,22 +165,68 @@ module guide_me_addr::guide_me{
     public fun state_object(): Object<AskAroundObject> {
         object::address_to_object(state_object_address())
     }
+    
+    // #[view]
+    // public fun state_object(): Question {
+    //     object::address_to_object(state_object_address())
+    // }
+
+
+    public fun TagExists(user_tags: &SmartTable<address, SmartTable<String, UserTag>>, user_addr: address, tag: String): bool {
+        let user_tag = smart_table::borrow(user_tags, user_addr);
+        if (smart_table::contains(user_tag,tag) ){
+            std::debug::print(&string::utf8(b"Tag is present"));
+            let user_tag = smart_table::borrow(user_tag, tag);
+            return user_tag.exists
+        };
+        std::debug::print(&string::utf8(b"Tag is Not present"));
+        return false
+    }
+
  // ======================== Unit Tests ========================
 
     #[test(sender = @guide_me_addr)]
     fun test_end_to_end<>(sender: &signer) acquires AskAroundObject {
         init_module(sender);
         register_user(sender, string::utf8(b"Sourabh"));
-        let str: String = string::utf8(b"Registered");
-        std::debug::print(&str);
+        add_tag(sender, string::utf8(b"Hello"));
+        ask_question(sender,string::utf8(b"Wassdupp hahaha"),string::utf8(b"Hello")); 
+    }
+
+    #[test(sender = @guide_me_addr)]
+    #[expected_failure(abort_code = E_UNEXPECTED_VALUE)]
+    fun test_question_without_tag<>(sender: &signer) acquires AskAroundObject {
+        init_module(sender);
+        register_user(sender, string::utf8(b"Sourabh"));
+        add_tag(sender, string::utf8(b"Hello"));
+        ask_question(sender,string::utf8(b"Wassdupp hahaha"),string::utf8(b"Hello2")); 
+    }
+    
+
+    #[test(sender = @guide_me_addr)]
+    #[expected_failure(abort_code = E_UNEXPECTED_VALUE)]
+    fun test_duplicate_tag_add<>(sender: &signer) acquires AskAroundObject {
+        init_module(sender);
+        register_user(sender, string::utf8(b"Sourabh"));
+        add_tag(sender, string::utf8(b"Hello"));
+        add_tag(sender, string::utf8(b"Hello"));
+
     }
     #[test(sender = @guide_me_addr)]
-    #[expected_failure(abort_code = 2)]
+    #[expected_failure(abort_code = E_KEY_NOT_FOUND)]
     fun test_double_reg<>(sender: &signer) acquires AskAroundObject {
         init_module(sender);
         register_user(sender, string::utf8(b"Sourabh"));
         let str: String = string::utf8(b"Registered");
         std::debug::print(&str);
         register_user(sender, string::utf8(b"Sourabh"));
+    }
+    #[test(sender = @guide_me_addr)]
+    #[expected_failure(abort_code = E_UNEXPECTED_VALUE)]
+    fun test_emplty_name<>(sender: &signer) acquires AskAroundObject {
+        init_module(sender);
+        register_user(sender, string::utf8(b""));
+        let str: String = string::utf8(b"Registered");
+        std::debug::print(&str);
     }
 }
