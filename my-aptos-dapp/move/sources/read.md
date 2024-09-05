@@ -9,3 +9,14 @@ answers can be vector instead of smartvector
  aptos move compile --package-dir aptos-move/move-examples/hello_blockchain/ --named-addresses hello_blockchain=default
 
   aptos move test --named-addresses guide_me_addr=bob
+
+
+  curl --request POST \
+  --url https://api.devnet.aptoslabs.com/v1/tables/table_handle/item \
+  --header 'Accept: application/json, application/x-bcs' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "key_type": "string",
+  "value_type": "string",
+  "key": null
+}'
