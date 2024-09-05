@@ -3,14 +3,18 @@ module guide_me_addr::guide_me{
     use aptos_framework::object::{Self, Object};
     use aptos_std::smart_table::{Self,SmartTable};
     use aptos_std::smart_vector::{Self,SmartVector};
+    // use std::option::{Option, none, some};
     use std::signer;
+    use std::vector;
 
     const OBJECT_NAME: vector<u8> = b"AskAroundObject";
     
     const E_UNEXPECTED_VALUE:u64 = 1;
     const E_KEY_NOT_FOUND:u64 = 2;
+
+    const QUESTION_RETRIEVE_COUNT:u64 = 20;
     
-    struct Question has store{
+    struct Question has store,copy{
         id: u64,
         asker: address,
         content: String,
@@ -43,7 +47,7 @@ module guide_me_addr::guide_me{
         owner: address,
         questions: SmartVector<Question>,
         answers: SmartVector<SmartVector<Answer>>,
-        tags: SmartTable<String, Tag>,
+        tags: SmartTable<String, Tag>,//global
         user_tags: SmartTable<address, SmartTable<String, UserTag>>,
         // stakes: SmartTable<address,u64>, //Pending
         tag_to_questions: SmartTable<String, SmartVector<u64>>,
@@ -68,7 +72,7 @@ module guide_me_addr::guide_me{
             users: smart_table::new()
         });
     }
-    public fun register_user(
+    public entry fun register_user(
         user: &signer,
         name: String
     ) acquires AskAroundObject {
@@ -92,7 +96,7 @@ module guide_me_addr::guide_me{
         std::debug::print(&string::utf8(b"User Registered"));
         std::debug::print(&name);
     }
-    public fun add_tag(
+    public entry fun add_tag(
         user: &signer,
         tag: String
     ) acquires AskAroundObject {
@@ -130,10 +134,10 @@ module guide_me_addr::guide_me{
         std::debug::print(&smart_table::borrow(&a_a_object.tags,tag).user_count);
     }
 // Ask A Qusetion
-    public fun ask_question(
+    public entry fun ask_question(
         user: &signer,
-        content: String,
-        tag: String
+        tag: String,
+        content: String
     ) acquires AskAroundObject{
         let user_addr = signer::address_of(user);
         let a_a_object = borrow_global_mut<AskAroundObject>(state_object_address());
@@ -152,8 +156,33 @@ module guide_me_addr::guide_me{
         };
         smart_vector::push_back(&mut a_a_object.questions, question);
         let user_info = smart_table::borrow_mut(&mut a_a_object.users, user_addr);
-        smart_vector::push_back(&mut user_info.questions, q_num)
+        smart_vector::push_back(&mut user_info.questions, q_num);
+        smart_vector::push_back(&mut a_a_object.answers, smart_vector::new());
+        smart_vector::push_back(smart_table::borrow_mut(&mut a_a_object.tag_to_questions,tag),q_num);
     }
+
+    // answer a question
+    public entry fun submit_answer(
+        user: &signer,
+        q_id: u64,
+        tag: String,
+        content: String
+    ) acquires AskAroundObject{
+        let user_addr = signer::address_of(user);
+        let a_a_object = borrow_global_mut<AskAroundObject>(state_object_address());
+        assert!(string::length(&content) > 0, 5);
+        assert!(TagExists(&a_a_object.user_tags,user_addr,tag), E_UNEXPECTED_VALUE);
+        // Create a new question
+        let q_num = smart_vector::length(&a_a_object.questions);
+        assert!(q_id < q_num, E_UNEXPECTED_VALUE);
+        let answer = Answer {
+            answerer: user_addr,
+            content: content,
+            timestamp: 0
+        };
+        let answer_vector = smart_vector::borrow_mut(&mut a_a_object.answers, q_id);
+        smart_vector::push_back( answer_vector, answer);
+    }  
 
 // ======================== Helper functions ========================
     #[view]
@@ -166,9 +195,55 @@ module guide_me_addr::guide_me{
         object::address_to_object(state_object_address())
     }
     
+    #[view]
+    public fun getQuestion(): Question acquires AskAroundObject{
+       let a_a_object = borrow_global<AskAroundObject>(state_object_address());
+    //    if (smart_vector::length(&a_a_object.questions) == 0) {
+    //     return none();
+            return *smart_vector::borrow(& a_a_object.questions, 0)
+    }
+
+    #[view] //get answer for a question
+    public fun getAnswers(): Question acquires AskAroundObject{
+       let a_a_object = borrow_global<AskAroundObject>(state_object_address());
+    //    if (smart_vector::length(&a_a_object.questions) == 0) {
+    //     return none();
+            return *smart_vector::borrow(& a_a_object.questions, 0)
+    }
+
+    // #[view] //get username from address
+    // #[view] // get best anser count
+    #[view]//get questionsID by tag
+    public fun getQuestionsIdbyTag(tag: String,page:u64): vector<u64> acquires AskAroundObject{
+        let a_a_object = borrow_global<AskAroundObject>(state_object_address());
+        let q_num = smart_vector::length(smart_table::borrow(&a_a_object.tag_to_questions,tag));
+        assert!(page>0,E_UNEXPECTED_VALUE);
+        let start = (q_num - page*QUESTION_RETRIEVE_COUNT);
+        if( start <0 ){
+            start = 0;
+        };
+        let max_end= start+QUESTION_RETRIEVE_COUNT; 
+        let results = vector[];
+        while(start <q_num && start <max_end) {
+            let q_id = *smart_vector::borrow(smart_table::borrow(&a_a_object.tag_to_questions,tag),start);
+            vector::push_back(&mut results, q_id);
+            start = start + 1;
+        };
+        results
+    }
+    // #[view] //getTagKeys
+    // #[view]//get question by ID
     // #[view]
-    // public fun state_object(): Question {
-    //     object::address_to_object(state_object_address())
+    // #[view]
+
+
+    // public fun getQuestion(): SmartVector<Question> acquires AskAroundObject{
+    //    let a_a_object = borrow_global<AskAroundObject>(state_object_address());
+    //    if (smart_vector::length(&a_a_object.questions) == 0) 
+    //    { 
+    //     return smart_vector::empty()
+    //    };
+    //     return a_a_object.questions
     // }
 
 
