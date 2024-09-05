@@ -5,6 +5,7 @@ authors = []
 
 [addresses]
 guide_me_addr = "26e86618fec5245e26b61f3943d4b81f0e6139a9816a5ba487b25ab079cccc0d"
+tester_addr = "0x03efcaf386e0ca14635ae77c99b1310cbd8832aef5f3d26527f539978e4aa260"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework" }

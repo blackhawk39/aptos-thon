@@ -113,6 +113,7 @@ module guide_me_addr::guide_me{
                 user_count: 0
             };
             smart_table::add(&mut a_a_object.tags,tag,tag_ob);
+            smart_table::add(&mut a_a_object.tag_to_questions,tag,smart_vector::new());
         };
         let user_tags = smart_table::borrow_mut(&mut a_a_object.user_tags, user_addr);
         if (smart_table::contains(user_tags,tag) ){
@@ -129,7 +130,7 @@ module guide_me_addr::guide_me{
         smart_table::add(user_tags , tag, user_tag);
         let tag_count = smart_table::borrow_mut(&mut a_a_object.tags,tag);
         tag_count.user_count = tag_count.user_count + 1;
-        smart_table::add(&mut a_a_object.tag_to_questions,tag,smart_vector::new());
+        
         std::debug::print(&string::utf8(b"Added Tag"));
         std::debug::print(&tag);
         std::debug::print(&string::utf8(b"User Count"));
@@ -286,7 +287,7 @@ module guide_me_addr::guide_me{
         let a_a_object = borrow_global<AskAroundObject>(state_object_address());
         return smart_vector::to_vector(& a_a_object.tag_keys)
     }
-    // #[view]
+    // #[view]//get best answer count 
     // #[view]
 
 
@@ -304,19 +305,21 @@ module guide_me_addr::guide_me{
 
  // ======================== Unit Tests ========================
 
-    #[test(sender = @guide_me_addr)]
-    fun test_end_to_end<>(sender: &signer) acquires AskAroundObject {
+    #[test(sender = @guide_me_addr, tester = @tester_addr)]
+    fun test_end_to_end<>(sender: &signer, tester :& signer) acquires AskAroundObject {
         init_module(sender);
         register_user(sender, string::utf8(b"Sourabh"));
+        register_user(tester, string::utf8(b"Thakur"));
         let tag1 = string::utf8(b"Coding");
         let question1 = string::utf8(b"which language is easy?");
         let answer1 = string::utf8(b"all are same, try python");
         let answer2 = string::utf8(b"dekh bhai language");
         add_tag(sender, tag1 );
+        add_tag(tester, tag1 );
         add_tag(sender, string::utf8(b"Guitar"));
         ask_question(sender,tag1,question1);
-        submit_answer(sender,0,tag1, answer1);
-        submit_answer(sender,0,tag1, answer2);
+        submit_answer(tester,0,tag1, answer1);
+        submit_answer(tester,0,tag1, answer2);
         let tag_keys:vector<String> = getTagKeys();
         vector::for_each(tag_keys, |x| std::debug::print(&x));
         let q_id_vec = getQuestionsIdbyTag(tag1,1);
@@ -338,6 +341,13 @@ module guide_me_addr::guide_me{
             std::debug::print(&x.content);
             i = i + 1;
         };
+        selectBestAnswer(sender,0,1);
+        let q_vec:vector<Question>  = getQuestionsbyID(q_id_vec);
+        let question = vector::borrow(&q_vec,0);
+        std::debug::print(&question.asker);
+        std::debug::print(&question.content);
+        std::debug::print(&question.answered);
+        std::debug::print(&question.best_answer_id);
         remove_tag(sender, string::utf8(b"Guitar"));
     }
     #[test(sender = @guide_me_addr)]
